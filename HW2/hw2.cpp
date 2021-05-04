@@ -11,10 +11,10 @@ void usage() {
     cout << "    -p: set the path to logger.so, default = ./logger.so" << endl;
     cout << "    -o: print output to file, print to \"stderr\" if no file specified" << endl;
     cout << "    --: separate the arguments for logger and for the command" << endl;
+    exit(0);
 }
 
 int main(int argc, char *argv[], char *envp[]) {
-    // cout << envp[0] << endl;
     char opt;
     while ((opt = getopt(argc, argv, "o:p:")) != -1) {
         switch (opt) {
@@ -26,12 +26,10 @@ int main(int argc, char *argv[], char *envp[]) {
                 break;
             default:
                 usage();
-                exit(0);
         }
     }
-    // cout << optind << endl;
 
-    cout << so_path.c_str() << endl;
+    if (optind == argc) usage();
 
     setenv("LD_PRELOAD", so_path.c_str(), 1);
     setenv("OUTPUT_PATH", output_path.c_str(), 1);
