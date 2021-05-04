@@ -1,4 +1,5 @@
 #include <iostream>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 using namespace std;
@@ -16,6 +17,7 @@ void usage() {
 
 int main(int argc, char *argv[], char *envp[]) {
     char opt;
+    FILE *fp;
     while ((opt = getopt(argc, argv, "o:p:")) != -1) {
         switch (opt) {
             case 'p':
@@ -23,6 +25,9 @@ int main(int argc, char *argv[], char *envp[]) {
                 break;
             case 'o':
                 output_path = optarg;
+                fp = fopen(optarg, "w");
+                fwrite("", 1, 0, fp);
+                fclose(fp);
                 break;
             default:
                 usage();
