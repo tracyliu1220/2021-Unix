@@ -109,15 +109,14 @@ int main() {
     fp = tmpfile64();
     fclose(fp);
 
+    // === system ===
+    cout << "=== system ===\n";
+    system("ls");
+
     // === close stderr ===
     cout << "=== close stderr ===\n";
     cerr << "before closing stderr!!\n";
     close(2);
     cerr << "after closing stderr!!!!!!!\n";
-
-
-    
-    // fd = open64("aaa", O_RDONLY, 511);
-    // ret = close(fd);
 
 }

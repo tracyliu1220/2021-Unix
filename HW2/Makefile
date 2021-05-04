@@ -11,8 +11,8 @@ logger: hw2.cpp
 testing: testing.cpp
 	g++ -o testing testing.cpp
 
-test: testing logger.so
-	LD_PRELOAD=./logger.so ./testing
+test: testing logger logger.so
+	./logger ./testing
 
 clean:
 	rm -f logger logger.so testing
