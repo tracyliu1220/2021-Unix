@@ -20,7 +20,7 @@ using namespace std;
 // chmod chown close creat* fclose fopen* fread fwrite open* read remove rename
 // tmpfile* write
 
-static char buf[1005];
+static char buffer[1005];
 
 // === prepare ===
 
@@ -44,7 +44,7 @@ static FILE* (*old_tmpfile64)(void) = NULL;
 static ssize_t (*old_write)(int, const void*, size_t) = NULL;
 
 static bool prepare_done = false;
-static int stderr_fd = -1;
+static int stderr_fd = 2;
 void prepare() {
     if (prepare_done) return;
     old_chown = (int (*)(const char*, uid_t, gid_t))dlsym(RTLD_NEXT, "chown");
@@ -65,8 +65,9 @@ void prepare() {
     old_tmpfile = (FILE* (*)(void))dlsym(RTLD_NEXT, "tmpfile");
     old_tmpfile64 = (FILE* (*)(void))dlsym(RTLD_NEXT, "tmpfile64");
     old_write = (ssize_t (*)(int, const void*, size_t))dlsym(RTLD_NEXT, "write");
-    stderr_fd = old_open(getenv("OUTPUT_PATH"), O_RDWR | O_CREAT | O_APPEND, 420);
-    // stderr_fd = old_open("/dev/fd/2", O_RDWR);
+    if (strncmp(getenv("OUTPUT_PATH"), "STDERR", 6) != 0) {
+        stderr_fd = old_open(getenv("OUTPUT_PATH"), O_RDWR | O_CREAT | O_APPEND, 420);
+    }
     prepare_done = true;
 }
 
@@ -135,8 +136,8 @@ int chown(const char *pathname, uid_t owner, gid_t group) {
     prepare();
     int ret = old_chown(pathname, owner, group);
     printstr("[logger] chown(\"");
-    realpath(pathname, buf);
-    printstr(buf);
+    realpath(pathname, buffer);
+    printstr(buffer);
     printstr("\", ");
     printint(owner);
     printstr(", ");
@@ -151,8 +152,8 @@ int chmod(const char *pathname, mode_t mode) {
     prepare();
     int ret = old_chmod(pathname, mode);
     printstr("[logger] chmod(\"");
-    realpath(pathname, buf);
-    printstr(buf);
+    realpath(pathname, buffer);
+    printstr(buffer);
     printstr("\", ");
     printint_oct(mode);
     printstr(") = ");
@@ -163,10 +164,13 @@ int chmod(const char *pathname, mode_t mode) {
 
 int close(int fd) {
     prepare();
-    get_fd(fd, buf);
+    if (fd == stderr_fd) {
+        stderr_fd = dup(stderr_fd);
+    }
+    get_fd(fd, buffer);
     int ret = old_close(fd);
     printstr("[logger] close(\"");
-    printstr(buf);
+    printstr(buffer);
     printstr("\") = ");
     printint(ret);
     printstr("\n");
@@ -177,8 +181,8 @@ int creat(const char *pathname, mode_t mode) {
     prepare();
     int ret = old_creat(pathname, mode);
     printstr("[logger] creat(\"");
-    realpath(pathname, buf);
-    printstr(buf);
+    realpath(pathname, buffer);
+    printstr(buffer);
     printstr("\", ");
     printint_oct(mode);
     printstr(") = ");
@@ -191,8 +195,8 @@ int creat64(const char *pathname, mode_t mode) {
     prepare();
     int ret = old_creat64(pathname, mode);
     printstr("[logger] creat64(\"");
-    realpath(pathname, buf);
-    printstr(buf);
+    realpath(pathname, buffer);
+    printstr(buffer);
     printstr("\", ");
     printint_oct(mode);
     printstr(") = ");
@@ -202,11 +206,14 @@ int creat64(const char *pathname, mode_t mode) {
 }
 
 int fclose(FILE *stream) {
+    if (fileno(stream) == stderr_fd) {
+        stderr_fd = dup(stderr_fd);
+    }
     prepare();
-    get_FILE(stream, buf);
+    get_FILE(stream, buffer);
     int ret = old_fclose(stream);
     printstr("[logger] fclose(\"");
-    printstr(buf);
+    printstr(buffer);
     printstr("\") = ");
     printint(ret);
     printstr("\n");
@@ -218,8 +225,8 @@ FILE *fopen(const char *pathname, const char *mode) {
     prepare();
     FILE *ret = old_fopen(pathname, mode);
     printstr("[logger] fopen(\"");
-    realpath(pathname, buf);
-    printstr(buf);
+    realpath(pathname, buffer);
+    printstr(buffer);
     printstr("\", \"");
     printstr(mode);
     printstr("\") = ");
@@ -233,8 +240,8 @@ FILE *fopen64(const char *pathname, const char *mode) {
     prepare();
     FILE *ret = old_fopen64(pathname, mode);
     printstr("[logger] fopen64(\"");
-    realpath(pathname, buf);
-    printstr(buf);
+    realpath(pathname, buffer);
+    printstr(buffer);
     printstr("\", \"");
     printstr(mode);
     printstr("\") = ");
@@ -253,8 +260,8 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
     printstr(", ");
     printint(nmemb);
     printstr(", \"");
-    get_FILE(stream, buf);
-    printstr(buf);
+    get_FILE(stream, buffer);
+    printstr(buffer);
     printstr("\") = ");
     printint(ret);
     printstr("\n");
@@ -271,8 +278,8 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
     printstr(", ");
     printint(nmemb);
     printstr(", \"");
-    get_FILE(stream, buf);
-    printstr(buf);
+    get_FILE(stream, buffer);
+    printstr(buffer);
     printstr("\") = ");
     printint(ret);
     printstr("\n");
@@ -293,8 +300,8 @@ int open(const char *pathname, int flags, ...) {
         ret = old_open(pathname, flags, 0);
     }
     printstr("[logger] open(\"");
-    realpath(pathname, buf);
-    printstr(buf);
+    realpath(pathname, buffer);
+    printstr(buffer);
     printstr("\", ");
     printint_oct(flags);
     printstr(", ");
@@ -319,8 +326,8 @@ int open64(const char *pathname, int flags, ...) {
         ret = old_open64(pathname, flags, 0);
     }
     printstr("[logger] open64(\"");
-    realpath(pathname, buf);
-    printstr(buf);
+    realpath(pathname, buffer);
+    printstr(buffer);
     printstr("\", ");
     printint_oct(flags);
     printstr(", ");
@@ -335,9 +342,10 @@ int open64(const char *pathname, int flags, ...) {
 ssize_t read(int fd, void *buf, size_t count) {
     prepare();
     ssize_t ret = old_read(fd, buf, count);
-    printstr("[logger] read(");
-    printint(fd);
-    printstr(", \"");
+    printstr("[logger] read(\"");
+    get_fd(fd, buffer);
+    printstr(buffer);
+    printstr("\", \"");
     printcharbuf(buf, ret);
     printstr("\", ");
     printint(count);
@@ -351,8 +359,8 @@ int remove(const char *pathname) {
     prepare();
     int ret = old_remove(pathname);
     printstr("[logger] remove(\"");
-    realpath(pathname, buf);
-    printstr(buf);
+    realpath(pathname, buffer);
+    printstr(buffer);
     printstr("\") = ");
     printint(ret);
     printstr("\n");
@@ -363,11 +371,11 @@ int rename(const char *oldpath, const char *newpath) {
     prepare();
     int ret = old_rename(oldpath, newpath);
     printstr("[logger] rename(\"");
-    realpath(oldpath, buf);
-    printstr(buf);
+    realpath(oldpath, buffer);
+    printstr(buffer);
     printstr("\", \"");
-    realpath(newpath, buf);
-    printstr(buf);
+    realpath(newpath, buffer);
+    printstr(buffer);
     printstr("\") = ");
     printint(ret);
     printstr("\n");
@@ -393,9 +401,10 @@ FILE* tmpfile64(void) {
 ssize_t write(int fd, const void *buf, size_t count) {
     prepare();
     ssize_t ret = old_write(fd, buf, count);
-    printstr("[logger] write(");
-    printint(fd);
-    printstr(", \"");
+    printstr("[logger] write(\"");
+    get_fd(fd, buffer);
+    printstr(buffer);
+    printstr("\", \"");
     printcharbuf(buf, ret);
     printstr("\", ");
     printint(count);

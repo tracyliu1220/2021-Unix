@@ -5,13 +5,13 @@
 using namespace std;
 
 string so_path = "./logger.so";
-string output_path = "/dev/fd/2";
+string output_path = "STDERR";
 
 void usage() {
-    cout << "usage: ./logger [-o file] [-p sopath] [--] cmd [cmd args ...]" << endl;
-    cout << "    -p: set the path to logger.so, default = ./logger.so" << endl;
-    cout << "    -o: print output to file, print to \"stderr\" if no file specified" << endl;
-    cout << "    --: separate the arguments for logger and for the command" << endl;
+    cerr << "usage: ./logger [-o file] [-p sopath] [--] cmd [cmd args ...]" << endl;
+    cerr << "    -p: set the path to logger.so, default = ./logger.so" << endl;
+    cerr << "    -o: print output to file, print to \"stderr\" if no file specified" << endl;
+    cerr << "    --: separate the arguments for logger and for the command" << endl;
     exit(0);
 }
 
@@ -34,7 +34,10 @@ int main(int argc, char *argv[], char *envp[]) {
         }
     }
 
-    if (optind == argc) usage();
+    if (optind == argc) {
+        cerr << "no command given." << endl;
+        exit(0);
+    };
 
     setenv("LD_PRELOAD", so_path.c_str(), 1);
     setenv("OUTPUT_PATH", output_path.c_str(), 1);
