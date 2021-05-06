@@ -21,6 +21,7 @@ using namespace std;
 // tmpfile* write
 
 static char buffer[1005];
+static char write_buffer[2000];
 
 // === prepare ===
 
@@ -74,7 +75,8 @@ void prepare() {
 // === print ===
 
 void printstr(const char *str) {
-    old_write(stderr_fd, str, strlen(str));
+    // old_write(stderr_fd, str, strlen(str));
+    strcat(write_buffer, str);
 }
 
 char int_buf[100];
@@ -83,17 +85,20 @@ char char_buf[100];
 
 void printint(int x) {
     int int_buf_ptr = sprintf(int_buf, "%d", x);
-    old_write(stderr_fd, int_buf, int_buf_ptr);
+    // old_write(stderr_fd, int_buf, int_buf_ptr);
+    strcat(write_buffer, int_buf);
 }
 
 void printint_oct(int x) {
     int int_buf_ptr = sprintf(int_buf, "%o", x);
-    old_write(stderr_fd, int_buf, int_buf_ptr);
+    // old_write(stderr_fd, int_buf, int_buf_ptr);
+    strcat(write_buffer, int_buf);
 }
 
 void printptr(void *x) {
     int ptr_buf_ptr = sprintf(ptr_buf, "%p", x);
-    old_write(stderr_fd, ptr_buf, ptr_buf_ptr);
+    // old_write(stderr_fd, ptr_buf, ptr_buf_ptr);
+    strcat(write_buffer, ptr_buf);
 }
 
 void printcharbuf(const void *x, size_t n) {
@@ -109,6 +114,11 @@ void printcharbuf(const void *x, size_t n) {
     printstr(char_buf);
 }
 
+void flushprint() {
+    old_write(stderr_fd, write_buffer, strlen(write_buffer));
+    write_buffer[0] = '\0';
+}
+
 // === get filename ===
 
 char path[1024];
@@ -117,15 +127,27 @@ void get_fd(int fd, char *buf) {
     char proclnk[200];
     sprintf(proclnk, "/proc/self/fd/%d", fd);
     int r = readlink(proclnk, path, 1000);
+    if (r < 0) {
+        buf[0] = '\0';
+        return;
+    }
     path[r] = '\0';
     realpath(path, buf);
 }
 
 void get_FILE(FILE *fp, char *buf) {
     int fno = fileno(fp);
+    if (fno < 0) {
+        buf[0] = '\0';
+        return;
+    }
     char proclnk[200];
     sprintf(proclnk, "/proc/self/fd/%d", fno);
     int r = readlink(proclnk, path, 1000);
+    if (r < 0) {
+        buf[0] = '\0';
+        return;
+    }
     path[r] = '\0';
     realpath(path, buf);
 }
@@ -145,6 +167,7 @@ int chown(const char *pathname, uid_t owner, gid_t group) {
     printstr(") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -159,6 +182,7 @@ int chmod(const char *pathname, mode_t mode) {
     printstr(") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -174,6 +198,7 @@ int close(int fd) {
     printstr("\") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -188,6 +213,7 @@ int creat(const char *pathname, mode_t mode) {
     printstr(") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -202,6 +228,7 @@ int creat64(const char *pathname, mode_t mode) {
     printstr(") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -217,6 +244,7 @@ int fclose(FILE *stream) {
     printstr("\") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
 
     return ret;
 }
@@ -232,6 +260,7 @@ FILE *fopen(const char *pathname, const char *mode) {
     printstr("\") = ");
     printptr(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -247,6 +276,7 @@ FILE *fopen64(const char *pathname, const char *mode) {
     printstr("\") = ");
     printptr(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -265,6 +295,7 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
     printstr("\") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -283,6 +314,7 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
     printstr("\") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -309,6 +341,7 @@ int open(const char *pathname, int flags, ...) {
     printstr(") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -335,6 +368,7 @@ int open64(const char *pathname, int flags, ...) {
     printstr(") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -352,6 +386,7 @@ ssize_t read(int fd, void *buf, size_t count) {
     printstr(") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -364,6 +399,7 @@ int remove(const char *pathname) {
     printstr("\") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -379,6 +415,7 @@ int rename(const char *oldpath, const char *newpath) {
     printstr("\") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -387,6 +424,7 @@ FILE* tmpfile(void) {
     printstr("[logger] tmpfile() = ");
     printptr(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -395,6 +433,7 @@ FILE* tmpfile64(void) {
     printstr("[logger] tmpfile64() = ");
     printptr(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
 
@@ -411,5 +450,6 @@ ssize_t write(int fd, const void *buf, size_t count) {
     printstr(") = ");
     printint(ret);
     printstr("\n");
+    flushprint();
     return ret;
 }
