@@ -24,5 +24,5 @@ test: test.o start.o libmini.so
 clean:
 	rm -f *.o *.so test
 
-test:
+testing: test
 	LD_LIBRARY_PATH=. ./test test.c

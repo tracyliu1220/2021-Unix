@@ -1,27 +1,22 @@
-#if 0
-#include <fcntl.h>
-#include <sys/types.h>
-#include <unistd.h>
-#else
 #include "libmini.h"
-#endif
 
-int main(int argc, char *argv[]) {
-	int fd = 0, rlen;
-	char buf[4096];
-	if(argc > 1) {
-		if((fd = open(argv[1], O_RDONLY)) < 0) {
-			perror("open");
-			return -1;
-		}
-	}
-	while((rlen = read(fd, buf, sizeof(buf))) > 0) {
-		if(write(1, buf, rlen) < 0) {
-			perror("write");
-			return -2;
-		}
-	}
-	close(fd);
-	return 0;
+void signal_handler (int signum) {
+  write(1, "hello\n", 6);
 }
 
+int main() {
+
+  struct sigaction new_action, old_action;
+
+  new_action.sa_handler = signal_handler;
+  sigemptyset(&new_action.sa_mask);
+  new_action.sa_flags = 0;
+
+  sigaction (SIGALRM, &new_action, &old_action);
+
+	alarm(1);
+	pause();
+
+  write(1, "finish\n", 7);
+	return 0;
+}

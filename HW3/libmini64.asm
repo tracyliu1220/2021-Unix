@@ -18,6 +18,9 @@ extern	errno
 
 	section .text
 
+  gensys  37, alarm
+  gensys  13, rt_sigaction
+
 	gensys   0, read
 	gensys   1, write
 	gensys   2, open
@@ -99,5 +102,11 @@ sleep_failed:
 	mov	rax, 0		; return 0 on error
 sleep_quit:
 	add	rsp, 32
+	ret
+
+  global sys_rt_sigreturn:function
+sys_rt_sigreturn:
+	mov	rax, 15
+	syscall
 	ret
 
