@@ -5,6 +5,7 @@
 
 long errno;
 
+#define __set_errno(val) (errno = (val))
 #define WRAPPER_RETval(type)                                                   \
   errno = 0;                                                                   \
   if (ret < 0) {                                                               \
@@ -25,6 +26,13 @@ long errno;
   (kact)->sa_restorer = sys_rt_sigreturn
 #define RESET_SA_RESTORER(act, kact) (act)->sa_restorer = (kact)->sa_restorer
 
+#define __sigmask(sig)                                                         \
+  (((unsigned long int)1) << (((sig)-1) % (8 * sizeof(unsigned long int))))
+
+static inline int __is_internal_signal(int sig) {
+  return (sig == SIGCANCEL) || (sig == SIGSETXID);
+}
+
 /* HW3 */
 
 unsigned int alarm(unsigned int seconds) {
@@ -32,25 +40,22 @@ unsigned int alarm(unsigned int seconds) {
   WRAPPER_RETval(unsigned int);
 }
 
-void printint(int x) {
-  if (x < 0) {
-    write(1, "-", 1);
-    x = -x;
-  }
-  char buf[100];
-  int l = 0;
-  while (x) {
-    buf[l] = '0' + x % 10;
-    x /= 10;
-    l++;
-  }
-  for (int i = 0; i < l / 2; i++) {
-    char tmp = buf[i];
-    buf[i] = buf[l - i - 1];
-    buf[l - i - 1] = tmp;
-  }
-  buf[l] = '\n';
-  write(1, buf, l + 1);
+sighandler_t signal(int sig, sighandler_t handler) {
+  struct sigaction act, oact;
+  /* Check signal extents to protect __sigismember.  */
+  if (handler == SIG_ERR || sig < 1 || sig >= NSIG
+      || __is_internal_signal (sig))
+    {
+      __set_errno (EINVAL);
+      return SIG_ERR;
+    }
+  act.sa_handler = handler;
+  sigemptyset (&act.sa_mask);
+  sigaddset (&act.sa_mask, sig);
+  // act.sa_flags = __sigismember (&_sigintr, sig) ? 0 : SA_RESTART;
+  if (sigaction (sig, &act, &oact) < 0)
+    return SIG_ERR;
+  return oact.sa_handler;
 }
 
 int sigaction(int sig, const struct sigaction *act, struct sigaction *oact) {
@@ -82,16 +87,63 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *oact) {
 
 int sigemptyset(sigset_t *set) {
   if (set == NULL) {
-    errno = EINVAL;
+    __set_errno(EINVAL);
     return -1;
   }
   memset(set, 0, sizeof(sigset_t));
   return 0;
 }
 
+int sigfillset(sigset_t *set) {
+  if (set == NULL) {
+    __set_errno(EINVAL);
+    return -1;
+  }
+  memset(set, 0xff, sizeof(sigset_t));
+  sigdelset(set, SIGCANCEL);
+  sigdelset(set, SIGSETXID);
+  return 0;
+}
+
+int sigaddset(sigset_t *set, int signo) {
+  if (set == NULL || signo <= 0 || signo >= NSIG ||
+      __is_internal_signal(signo)) {
+    __set_errno(EINVAL);
+    return -1;
+  }
+  // __sigaddset(set, signo);
+  (*set) |= __sigmask(signo);
+  return 0;
+}
+
+int sigdelset(sigset_t *set, int signo) {
+  if (set == NULL || signo <= 0 || signo >= NSIG ||
+      __is_internal_signal(signo)) {
+    __set_errno(EINVAL);
+    return -1;
+  }
+  (*set) &= ~__sigmask(signo);
+  // __sigdelset(set, signo);
+  return 0;
+}
+
+int sigismember(const sigset_t *set, int signo) {
+  if (set == NULL || signo <= 0 || signo >= NSIG) {
+    __set_errno(EINVAL);
+    return -1;
+  }
+  return ((*set) & signo) ? 1 : 0;
+}
+
+int sigpending(sigset_t *set) {
+  long ret = sys_rt_sigpending(set, sizeof(sigset_t));
+  WRAPPER_RETval(int);
+}
+
 void sigreturn(void) { sys_rt_sigreturn(); }
 
 /* utils */
+
 void *memset(void *dest, int val, size_t len) {
   unsigned char *ptr = dest;
   while (len-- > 0)

@@ -2,6 +2,7 @@
 #define __LIBMINI_H__ /* avoid reentrant */
 // #define _SIGSET_NWORDS (1024 / (8 * sizeof(unsigned long int)))
 // #define _SIGSET_NWORDS 1
+#define NSIG 33
 
 typedef long long size_t;
 typedef long long ssize_t;
@@ -11,7 +12,7 @@ typedef int uid_t;
 typedef int gid_t;
 typedef int pid_t;
 
-typedef void (*__sighandler_t)(int);
+typedef void (*sighandler_t)(int);
 typedef unsigned long sigset_t;
 typedef long clock_t;
 
@@ -175,6 +176,9 @@ extern long errno;
 #define SIGIO 29
 #define SIGPOLL SIGIO
 
+#define SIGCANCEL 32
+#define SIGSETXID 33
+
 /* from /usr/include/x86_64-linux-gnu/bits/sigaction.h */
 #define SA_NOCLDSTOP 1 /* Don't send SIGCHLD when children stop.  */
 #define SA_NOCLDWAIT 2 /* Don't create zombie on child death.  */
@@ -194,6 +198,10 @@ extern long errno;
 #define SIG_SETMASK 2 /* Set the set of blocked signals.  */
 
 #define SA_RESTORER 0x04000000
+
+const sighandler_t SIG_DFL = (sighandler_t)0;
+const sighandler_t SIG_IGN = (sighandler_t)1;
+const sighandler_t SIG_ERR = (sighandler_t)-1;
 
 struct timespec {
   long tv_sec;  /* seconds */
@@ -219,7 +227,7 @@ struct sigaction {
 };
 
 struct kernel_sigaction {
-  __sighandler_t k_sa_handler;
+  sighandler_t k_sa_handler;
   unsigned long sa_flags;
   void (*sa_restorer)(void);
   sigset_t sa_mask;
@@ -234,6 +242,7 @@ void *memcpy(void *dest, const void *src, size_t len);
 long sys_alarm(unsigned int seconds);
 long sys_rt_sigaction(int signum, const struct kernel_sigaction *act,
                       struct kernel_sigaction *oldact, size_t sigsetsize);
+long sys_rt_sigpending(sigset_t *set, size_t sigsetsize);
 
 void sys_rt_sigreturn(void);
 
@@ -275,10 +284,18 @@ long sys_getegid();
 
 /* HW3 */
 unsigned int alarm(unsigned int seconds);
+sighandler_t signal(int signum, sighandler_t handler);
 int sigaction(int signum, const struct sigaction *act,
               struct sigaction *oldact);
-int sigemptyset(sigset_t *set);
 void sigreturn();
+int sigpending(sigset_t *set);
+
+// sigset related
+int sigemptyset(sigset_t *set);
+int sigaddset(sigset_t *set, int signo);
+int sigfillset(sigset_t *set);
+int sigdelset(sigset_t *set, int signo);
+int sigismember(const sigset_t *set, int signo);
 
 /* rest */
 ssize_t read(int fd, char *buf, size_t count);

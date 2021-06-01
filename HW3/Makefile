@@ -19,7 +19,7 @@ test.o: test.c
 test: test.o start.o libmini.so
 	ld -m elf_x86_64 --dynamic-linker /lib64/ld-linux-x86-64.so.2 -o test test.o start.o -L. -L.. -lmini
 
-.PHONY: all clean test
+.PHONY: all clean testing
 
 clean:
 	rm -f *.o *.so test

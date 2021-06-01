@@ -20,6 +20,7 @@ extern	errno
 
   gensys  37, alarm
   gensys  13, rt_sigaction
+  gensys 127, rt_sigpending
 
 	gensys   0, read
 	gensys   1, write
