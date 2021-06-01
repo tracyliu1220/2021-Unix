@@ -31,8 +31,10 @@ void signal_handler (int signum) {
 }
 
 int main() {
+  int ret;
 
   struct sigaction new_action, old_action;
+  sigset_t sigset, old_sigset, empty_sigset;
 
   new_action.sa_handler = signal_handler;
   sigemptyset(&new_action.sa_mask);
@@ -40,14 +42,15 @@ int main() {
 
   // sigaction (SIGALRM, &new_action, &old_action);
   signal(SIGALRM, signal_handler);
+  
+  sigemptyset(&sigset);
+  sigaddset(&sigset, SIGALRM);
+  // sigprocmask(SIG_BLOCK, &sigset, NULL);
 
 	alarm(1);
 	pause();
 
 
-  sigset_t sigset;
-  int ret;
-  ret = sigemptyset(&sigset);
   sigaddset(&sigset, SIGALRM);
   sigdelset(&sigset, SIGALRM);
   sigfillset(&sigset);
@@ -57,6 +60,8 @@ int main() {
   ret = sigpending(&sigset);
   printint(ret);
   printint(sigset);
+
+
 
 	return 0;
 }

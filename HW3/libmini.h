@@ -242,6 +242,7 @@ void *memcpy(void *dest, const void *src, size_t len);
 long sys_alarm(unsigned int seconds);
 long sys_rt_sigaction(int signum, const struct kernel_sigaction *act,
                       struct kernel_sigaction *oldact, size_t sigsetsize);
+long sys_rt_sigprocmask(int how, sigset_t *set, sigset_t *oset,  size_t sigsetsize);
 long sys_rt_sigpending(sigset_t *set, size_t sigsetsize);
 
 void sys_rt_sigreturn(void);
@@ -287,8 +288,9 @@ unsigned int alarm(unsigned int seconds);
 sighandler_t signal(int signum, sighandler_t handler);
 int sigaction(int signum, const struct sigaction *act,
               struct sigaction *oldact);
-void sigreturn();
+int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
 int sigpending(sigset_t *set);
+void sigreturn();
 
 // sigset related
 int sigemptyset(sigset_t *set);

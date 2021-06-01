@@ -58,6 +58,7 @@ sighandler_t signal(int sig, sighandler_t handler) {
   return oact.sa_handler;
 }
 
+
 int sigaction(int sig, const struct sigaction *act, struct sigaction *oact) {
   int ret;
   struct kernel_sigaction kact, koact;
@@ -82,6 +83,20 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *oact) {
     oact->sa_flags = koact.sa_flags;
     RESET_SA_RESTORER(oact, &koact);
   }
+  WRAPPER_RETval(int);
+}
+
+int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
+  sigset_t _set;
+  memcpy(&_set, set, sizeof(_set));
+  long ret = sys_rt_sigprocmask(how, &_set, oldset, sizeof(sigset_t));
+  WRAPPER_RETval(int);
+}
+
+
+
+int sigpending(sigset_t *set) {
+  long ret = sys_rt_sigpending(set, sizeof(sigset_t));
   WRAPPER_RETval(int);
 }
 
@@ -135,10 +150,6 @@ int sigismember(const sigset_t *set, int signo) {
   return ((*set) & signo) ? 1 : 0;
 }
 
-int sigpending(sigset_t *set) {
-  long ret = sys_rt_sigpending(set, sizeof(sigset_t));
-  WRAPPER_RETval(int);
-}
 
 void sigreturn(void) { sys_rt_sigreturn(); }
 
