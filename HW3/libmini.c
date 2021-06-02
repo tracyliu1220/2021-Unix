@@ -93,7 +93,7 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
     memcpy(&_set, set, sizeof(_set));
     ret = sys_rt_sigprocmask(how, &_set, oldset, sizeof(sigset_t));
   } else {
-    ret = sys_rt_sigprocmask(how, set, oldset, sizeof(sigset_t));
+    ret = sys_rt_sigprocmask(how, NULL, oldset, sizeof(sigset_t));
   }
   WRAPPER_RETval(int);
 }
