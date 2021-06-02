@@ -93,8 +93,6 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
   WRAPPER_RETval(int);
 }
 
-
-
 int sigpending(sigset_t *set) {
   long ret = sys_rt_sigpending(set, sizeof(sigset_t));
   WRAPPER_RETval(int);
@@ -152,6 +150,18 @@ int sigismember(const sigset_t *set, int signo) {
 
 
 void sigreturn(void) { sys_rt_sigreturn(); }
+
+// // jmp
+// int setjmp(jmp_buf env) {
+//   sigprocmask(SIG_SETMASK, NULL, &(env->mask));
+//   long ret = asm_setjmp(env->reg);
+//   sigprocmask(SIG_SETMASK, env->mask, NULL);
+//   return (int)ret;
+// }
+// void longjmp(jmp_buf env, int val) {
+//   asm_longjmp(env->reg, val);
+//   return;
+// }
 
 /* utils */
 

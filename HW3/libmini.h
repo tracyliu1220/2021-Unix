@@ -54,6 +54,13 @@ typedef struct {
   */
 } siginfo_t;
 
+typedef struct jmp_buf_s {
+	long long reg[8];
+	sigset_t mask;
+} jmp_buf[1];
+
+jmp_buf global_jmp_buf;
+
 extern long errno;
 // extern void sys_rt_sigreturn(void);
 
@@ -298,6 +305,10 @@ int sigaddset(sigset_t *set, int signo);
 int sigfillset(sigset_t *set);
 int sigdelset(sigset_t *set, int signo);
 int sigismember(const sigset_t *set, int signo);
+
+// jmp
+int setjmp(jmp_buf env);
+void longjmp(jmp_buf env, int val);
 
 /* rest */
 ssize_t read(int fd, char *buf, size_t count);
