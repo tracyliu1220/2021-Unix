@@ -87,9 +87,14 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *oact) {
 }
 
 int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
-  sigset_t _set;
-  memcpy(&_set, set, sizeof(_set));
-  long ret = sys_rt_sigprocmask(how, &_set, oldset, sizeof(sigset_t));
+  long ret;
+  if (set) {
+    sigset_t _set;
+    memcpy(&_set, set, sizeof(_set));
+    ret = sys_rt_sigprocmask(how, &_set, oldset, sizeof(sigset_t));
+  } else {
+    ret = sys_rt_sigprocmask(how, set, oldset, sizeof(sigset_t));
+  }
   WRAPPER_RETval(int);
 }
 
@@ -145,7 +150,7 @@ int sigismember(const sigset_t *set, int signo) {
     __set_errno(EINVAL);
     return -1;
   }
-  return ((*set) & signo) ? 1 : 0;
+  return ((*set) & __sigmask(signo)) ? 1 : 0;
 }
 
 

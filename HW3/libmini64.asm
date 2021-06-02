@@ -134,8 +134,7 @@ setjmp:
   push r10
 
   mov rsi, 0
-  mov rdx, rdi
-  add rdx, 64
+  lea rdx, [rdi + 64]
   mov r10, 8
   mov rax, 14
   syscall
@@ -167,8 +166,7 @@ longjmp:
   push rdx
   push r10
 
-  mov rsi, rdi
-  add rsi, 64
+  lea rsi, [rdi + 64]
   mov rdi, 2
   mov rdx, 0
   mov r10, 8
