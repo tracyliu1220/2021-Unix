@@ -182,6 +182,8 @@ extern long errno;
 #define SIGWINCH 28
 #define SIGIO 29
 #define SIGPOLL SIGIO
+#define SIGPWR 30
+#define SIGSYS 31
 
 #define SIGCANCEL 32
 #define SIGSETXID 33

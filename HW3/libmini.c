@@ -118,8 +118,8 @@ int sigfillset(sigset_t *set) {
     return -1;
   }
   memset(set, 0xff, sizeof(sigset_t));
-  sigdelset(set, SIGCANCEL);
-  sigdelset(set, SIGSETXID);
+  (*set) &= ~__sigmask(SIGCANCEL);
+  (*set) &= ~__sigmask(SIGSETXID);
   return 0;
 }
 
