@@ -1,5 +1,5 @@
 
-all: libmini.so
+all: libmini.so start.o
 
 libmini64.o: libmini64.asm
 	yasm -f elf64 -DYASM -D__x86_64__ -DPIC libmini64.asm -o libmini64.o
