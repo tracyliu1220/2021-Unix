@@ -1,3 +1,4 @@
+#include <capstone/capstone.h>
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
@@ -10,14 +11,13 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
-#include <capstone/capstone.h>
 
 #include "commands.h"
 
 struct ins {
-	unsigned char bytes[16];
-	int size;
-	string opr, opnd;
+  unsigned char bytes[16];
+  int size;
+  string opr, opnd;
 };
 
 int loaded = 0;
@@ -47,6 +47,50 @@ void remove_cc(unsigned long addr) {
   ptrace(PTRACE_POKETEXT, program_pid, addr, ori_code[addr]);
 }
 
+void disasm(unsigned long addr, int max_line) {
+  csh cshandle = 0;
+  cs_open(CS_ARCH_X86, CS_MODE_64, &cshandle);
+
+  cs_insn *insn;
+  unsigned long buf[32];
+  int bufsz = 32;
+
+  for (int i = 0; i < bufsz; i++) {
+    buf[i] = ptrace(PTRACE_PEEKTEXT, program_pid, addr + 8 * i, 0);
+  }
+
+  int count;
+  if ((count = cs_disasm(cshandle, (uint8_t *)buf, bufsz * 8, addr, 0, &insn)) >
+      0) {
+    for (int i = 0; i < count; i++) {
+      if (i == max_line)
+        break;
+      if (insn[i].address < text_offset)
+        continue;
+      if (insn[i].address >= text_offset + text_size)
+        break;
+
+      ins in;
+      in.size = insn[i].size;
+      in.opr = insn[i].mnemonic;
+      in.opnd = insn[i].op_str;
+      memcpy(in.bytes, insn[i].bytes, insn[i].size);
+
+      cout << hex << insn[i].address << ": ";
+
+      for (int j = 0; j < 16; j++) {
+        if (j < in.size)
+          cout << hex << setfill('0') << setw(2) << (int)in.bytes[j] << ' ';
+        else
+          cout << "   ";
+      }
+      cout << in.opr << ' ' << in.opnd << endl;
+    }
+    cs_free(insn, count);
+  }
+  cs_close(&cshandle);
+}
+
 void wait_tracee() {
   int status;
   waitpid(program_pid, &status, 0);
@@ -66,10 +110,29 @@ void wait_tracee() {
     ptrace(PTRACE_POKEUSER, program_pid, reg_offset["rip"] * sizeof(long), rip);
 
     // TODO
-    cout
-        << "** breakpoint" << endl; // @       4000c6: b8 01 00 00 00 mov eax, 1
+    cout << "** breakpoint @ "; // @       4000c6: b8 01 00 00 00 mov eax, 1
+
+    // remove all cc
+    for (int i = 0; i < bp.size(); i++)
+      if (bp[i] != -1)
+        remove_cc(bp[i]);
+    disasm(rip, 1);
+
+    // add all cc
+    for (int i = 0; i < bp.size(); i++)
+      if (bp[i] != -1)
+        add_cc(bp[i]);
+
+    // remove rip cc
+    remove_cc(rip);
+
     return;
   }
+
+  // add all cc
+  for (int i = 0; i < bp.size(); i++)
+    if (bp[i] != -1)
+      add_cc(bp[i]);
 
   last_bp = -1;
 }
@@ -146,14 +209,18 @@ void cmd_cont(string input) {
     return;
   }
 
+  /*
   unsigned long rip =
       ptrace(PTRACE_PEEKUSER, program_pid, reg_offset["rip"] * sizeof(long), 0);
   if (rip == last_bp)
     remove_cc(rip);
+  */
   ptrace(PTRACE_CONT, program_pid, 0, 0);
   wait_tracee();
+  /*
   if (cur_bp.count(rip))
     add_cc(rip);
+  */
 }
 
 void cmd_delete(string input) {
@@ -185,6 +252,9 @@ void cmd_disasm(string input) {
     return;
   }
 
+  disasm(addr, 10);
+
+  /*
   csh cshandle = 0;
   cs_open(CS_ARCH_X86, CS_MODE_64, &cshandle);
 
@@ -197,32 +267,30 @@ void cmd_disasm(string input) {
   }
 
   int count;
-  if ((count = cs_disasm(cshandle, (uint8_t *)buf, bufsz * 8, addr, 0, &insn)) > 0) {
-      for (int i = 0; i < count; i++) {
-          if (i == 10) break;
-          if (insn[i].address < text_offset) continue;
-          if (insn[i].address >= text_offset + text_size) break;
-        
-			ins in;
-			in.size = insn[i].size;
-			in.opr  = insn[i].mnemonic;
-			in.opnd = insn[i].op_str;
-			memcpy(in.bytes, insn[i].bytes, insn[i].size);
+  if ((count = cs_disasm(cshandle, (uint8_t *)buf, bufsz * 8, addr, 0, &insn)) >
+  0) { for (int i = 0; i < count; i++) { if (i == 10) break; if (insn[i].address
+  < text_offset) continue; if (insn[i].address >= text_offset + text_size)
+  break;
+
+                        ins in;
+                        in.size = insn[i].size;
+                        in.opr  = insn[i].mnemonic;
+                        in.opnd = insn[i].op_str;
+                        memcpy(in.bytes, insn[i].bytes, insn[i].size);
 
           cout << hex << insn[i].address << ": ";
 
           for (int j = 0; j < 16; j++) {
               if (j < in.size)
-                  cout << hex << setfill('0') << setw(2) << (int)in.bytes[j] << ' ';
-              else
-                  cout << "   ";
+                  cout << hex << setfill('0') << setw(2) << (int)in.bytes[j] <<
+  ' '; else cout << "   ";
           }
           cout << in.opr << ' ' << in.opnd << endl;
       }
       cs_free(insn, count);
   }
   cs_close(&cshandle);
-
+  */
 }
 
 void cmd_dump(string input) {
@@ -441,14 +509,18 @@ void cmd_setreg(string input) {
 }
 
 void cmd_si(string input) {
+  /*
   unsigned long rip =
       ptrace(PTRACE_PEEKUSER, program_pid, reg_offset["rip"] * sizeof(long), 0);
   if (rip == last_bp)
     remove_cc(rip);
+  */
   ptrace(PTRACE_SINGLESTEP, program_pid, 0, 0);
   wait_tracee();
+  /*
   if (cur_bp.count(rip))
     add_cc(rip);
+    */
 }
 
 void cmd_start(string input) {
