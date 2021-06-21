@@ -67,7 +67,7 @@ void init(int argc, char *argv[]) {
   reg_offset["ds"] = 22;
   reg_offset["es"] = 23;
   reg_offset["fs"] = 24;
-  reg_offset["gs"] = 25; 
+  reg_offset["gs"] = 25;
 }
 
 int main(int argc, char *argv[]) {
@@ -81,16 +81,21 @@ int main(int argc, char *argv[]) {
     stringstream ss;
     ss << user_input;
     ss >> user_cmd;
-    int user_cmd_id = cmd_id[user_cmd];
+    int user_cmd_id = -1;
+    if (cmd_id.count(user_cmd))
+      user_cmd_id = cmd_id[user_cmd];
     switch (user_cmd_id) {
-    case CMD_BREAK: // TODO
+    case CMD_BREAK:
+      cmd_break(user_input);
       break;
     case CMD_CONT:
       cmd_cont(user_input);
       break;
-    case CMD_DELETE: // TODO
+    case CMD_DELETE:
+      cmd_delete(user_input);
       break;
-    case CMD_DISASM: // TODO
+    case CMD_DISASM:
+      cmd_disasm(user_input);
       break;
     case CMD_DUMP:
       cmd_dump(user_input);
@@ -107,7 +112,8 @@ int main(int argc, char *argv[]) {
     case CMD_HELP:
       cmd_help(user_input);
       break;
-    case CMD_LIST: // TODO
+    case CMD_LIST:
+      cmd_list(user_input);
       break;
     case CMD_LOAD:
       cmd_load(user_input);
@@ -121,12 +127,14 @@ int main(int argc, char *argv[]) {
     case CMD_SETREG:
       cmd_setreg(user_input);
       break;
-    case CMD_SI: // TODO
+    case CMD_SI:
+      cmd_si(user_input);
       break;
     case CMD_START:
       cmd_start(user_input);
       break;
     }
-    if (exit_flag) break;
+    if (exit_flag)
+      break;
   }
 }

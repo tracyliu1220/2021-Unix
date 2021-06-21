@@ -1,44 +1,24 @@
-#include "commands.h"
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <set>
 #include <sstream>
 #include <sys/ptrace.h>
 #include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <vector>
+#include <capstone/capstone.h>
 
-typedef struct {
-  uint8_t e_ident[16];
-  uint16_t e_type;
-  uint16_t e_machine;
-  uint32_t e_version;
-  uint64_t e_entry;
-  uint64_t e_phoff;
-  uint64_t e_shoff;
-  uint32_t e_flags;
-  uint16_t e_ehsize;
-  uint16_t e_phentsize;
-  uint16_t e_phnum;
-  uint16_t e_shentsize;
-  uint16_t e_shnum;
-  uint16_t e_shstrndx;
-} Elf32Hdr;
+#include "commands.h"
 
-typedef struct {
-  uint32_t sh_name;
-  uint32_t sh_type;
-  uint64_t sh_flags;
-  uint64_t sh_addr;
-  uint64_t sh_offset;
-  uint64_t sh_size;
-  uint32_t sh_link;
-  uint32_t sh_info;
-  uint64_t sh_addralign;
-  uint64_t sh_entsize;
-} Elf32SectHdr;
+struct ins {
+	unsigned char bytes[16];
+	int size;
+	string opr, opnd;
+};
 
 int loaded = 0;
 int running = 0;
@@ -49,16 +29,49 @@ map<string, int> reg_offset;
 unsigned long text_offset;
 unsigned long text_size;
 
+// breakpoint related
+map<unsigned long, unsigned long> ori_code;
+vector<unsigned long> bp;
+set<unsigned long> cur_bp;
+unsigned long last_bp = -1;
+
+void add_cc(unsigned long addr) {
+  unsigned long ori = ori_code[addr];
+  unsigned char *ptr = (unsigned char *)&ori;
+  ptr[0] = 0xcc;
+  // unsigned long cc = ori & 0xFFFFFFFFFFFFFFull | 0xCC00000000000000ull;
+  ptrace(PTRACE_POKETEXT, program_pid, addr, ori);
+}
+
+void remove_cc(unsigned long addr) {
+  ptrace(PTRACE_POKETEXT, program_pid, addr, ori_code[addr]);
+}
+
 void wait_tracee() {
   int status;
   waitpid(program_pid, &status, 0);
-  if (WTERMSIG(status) == SIGTRAP) { // TODO
-    cout << "** break point" << endl;
-  }
   if (WIFEXITED(status)) {
     cout << "** child process " << dec << program_pid << " terminiated (code "
          << WEXITSTATUS(status) << ")" << endl;
+    running = 0;
+    last_bp = -1;
+    return;
   }
+
+  unsigned long rip =
+      ptrace(PTRACE_PEEKUSER, program_pid, reg_offset["rip"] * sizeof(long), 0);
+  if (cur_bp.count(rip - 1)) {
+    rip--;
+    last_bp = rip;
+    ptrace(PTRACE_POKEUSER, program_pid, reg_offset["rip"] * sizeof(long), rip);
+
+    // TODO
+    cout
+        << "** breakpoint" << endl; // @       4000c6: b8 01 00 00 00 mov eax, 1
+    return;
+  }
+
+  last_bp = -1;
 }
 
 void get_text_info(unsigned long *offset, unsigned long *size) {
@@ -102,21 +115,115 @@ void get_text_info(unsigned long *offset, unsigned long *size) {
   }
 }
 
-// void cmd_break(string input);
+void cmd_break(string input) {
+  if (!running) {
+    cout << "** program " << program_name << " is not running." << endl;
+    return;
+  }
+  stringstream ss;
+  ss << input;
+  string cmd;
+  ss >> cmd;
+  unsigned long addr;
+  if (!(ss >> hex >> addr)) {
+    cout << "** no addr is given." << endl;
+    return;
+  }
+
+  if (cur_bp.count(addr))
+    return;
+  cur_bp.insert(addr);
+  bp.push_back(addr);
+
+  ori_code[addr] = ptrace(PTRACE_PEEKTEXT, program_pid, addr, 0);
+
+  add_cc(addr);
+}
+
 void cmd_cont(string input) {
   if (!running) {
     cout << "** program " << program_name << " is not running." << endl;
     return;
   }
 
-  int status;
+  unsigned long rip =
+      ptrace(PTRACE_PEEKUSER, program_pid, reg_offset["rip"] * sizeof(long), 0);
+  if (rip == last_bp)
+    remove_cc(rip);
   ptrace(PTRACE_CONT, program_pid, 0, 0);
-  // waitpid(program_pid, &status, 0);
   wait_tracee();
+  if (cur_bp.count(rip))
+    add_cc(rip);
 }
 
-// void cmd_delete(string input);
-// void cmd_disasm(string input);
+void cmd_delete(string input) {
+  stringstream ss;
+  ss << input;
+  string cmd;
+  ss >> cmd;
+  int idx;
+  ss >> idx;
+
+  if (idx > bp.size())
+    return;
+  if (bp[idx] == -1)
+    return;
+
+  cur_bp.erase(bp[idx]);
+  remove_cc(bp[idx]);
+  bp[idx] = -1;
+}
+
+void cmd_disasm(string input) {
+  stringstream ss;
+  ss << input;
+  string cmd;
+  ss >> cmd;
+  unsigned long addr;
+  if (!(ss >> hex >> addr)) {
+    cout << "** no addr is given." << endl;
+    return;
+  }
+
+  csh cshandle = 0;
+  cs_open(CS_ARCH_X86, CS_MODE_64, &cshandle);
+
+  cs_insn *insn;
+  unsigned long buf[32];
+  int bufsz = 32;
+
+  for (int i = 0; i < bufsz; i++) {
+    buf[i] = ptrace(PTRACE_PEEKTEXT, program_pid, addr + 8 * i, 0);
+  }
+
+  int count;
+  if ((count = cs_disasm(cshandle, (uint8_t *)buf, bufsz * 8, addr, 0, &insn)) > 0) {
+      for (int i = 0; i < count; i++) {
+          if (i == 10) break;
+          if (insn[i].address < text_offset) continue;
+          if (insn[i].address >= text_offset + text_size) break;
+        
+			ins in;
+			in.size = insn[i].size;
+			in.opr  = insn[i].mnemonic;
+			in.opnd = insn[i].op_str;
+			memcpy(in.bytes, insn[i].bytes, insn[i].size);
+
+          cout << hex << insn[i].address << ": ";
+
+          for (int j = 0; j < 16; j++) {
+              if (j < in.size)
+                  cout << hex << setfill('0') << setw(2) << (int)in.bytes[j] << ' ';
+              else
+                  cout << "   ";
+          }
+          cout << in.opr << ' ' << in.opnd << endl;
+      }
+      cs_free(insn, count);
+  }
+  cs_close(&cshandle);
+
+}
 
 void cmd_dump(string input) {
   stringstream ss;
@@ -130,50 +237,61 @@ void cmd_dump(string input) {
   }
 
   for (int i = 0; i < 5; i++) {
-      if (addr + 16 * i + 15 < text_offset || addr + 16 * i >= text_offset + text_size) continue;
-      
-      cout << hex << addr + 16 * i << ": ";
+    if (addr + 16 * i + 15 < text_offset ||
+        addr + 16 * i >= text_offset + text_size)
+      continue;
 
-      unsigned long text_val1 = ptrace(PTRACE_PEEKTEXT, program_pid, addr + 16 * i, 0);
-      unsigned char *ptr1 = (unsigned char*)&text_val1;
-      for (int j = 0; j < 8; j++) {
-        unsigned long _addr = addr + 16 * i + j;
-        if (_addr < text_offset || _addr >= text_offset + text_size) cout << "   ";
-        else cout << hex << setfill('0') << setw(2) << (int)ptr1[j] << ' ';
-      }
+    cout << hex << addr + 16 * i << ": ";
 
-      unsigned long text_val2 = ptrace(PTRACE_PEEKTEXT, program_pid, addr + 16 * i + 8, 0);
-      unsigned char *ptr2 = (unsigned char*)&text_val2;
-      for (int j = 0; j < 8; j++) {
-        unsigned long _addr = addr + 16 * i + 8 + j;
-        if (_addr < text_offset || _addr >= text_offset + text_size) cout << "   ";
-        else cout << hex << setfill('0') << setw(2) << (int)ptr2[j] << ' ';
-      }
+    unsigned long text_val1 =
+        ptrace(PTRACE_PEEKTEXT, program_pid, addr + 16 * i, 0);
+    unsigned char *ptr1 = (unsigned char *)&text_val1;
+    for (int j = 0; j < 8; j++) {
+      unsigned long _addr = addr + 16 * i + j;
+      if (_addr < text_offset || _addr >= text_offset + text_size)
+        cout << "   ";
+      else
+        cout << hex << setfill('0') << setw(2) << (int)ptr1[j] << ' ';
+    }
 
-      cout << '|';
-      for (int j = 0; j < 8; j++) {
-          unsigned long _addr = addr + 16 * i + j;
-          if (_addr < text_offset || _addr >= text_offset + text_size) {
-              cout << ' ';
-              continue;
-          }
-          if (isprint(ptr1[j])) cout << ptr1[j];
-          else cout << '.';
-      }
-      for (int j = 0; j < 8; j++) {
-          unsigned long _addr = addr + 16 * i + 8 + j;
-          if (_addr < text_offset || _addr >= text_offset + text_size) {
-              cout << ' ';
-              continue;
-          }
-          if (isprint(ptr2[j])) cout << ptr2[j];
-          else cout << '.';
-      }
-      cout << '|';
+    unsigned long text_val2 =
+        ptrace(PTRACE_PEEKTEXT, program_pid, addr + 16 * i + 8, 0);
+    unsigned char *ptr2 = (unsigned char *)&text_val2;
+    for (int j = 0; j < 8; j++) {
+      unsigned long _addr = addr + 16 * i + 8 + j;
+      if (_addr < text_offset || _addr >= text_offset + text_size)
+        cout << "   ";
+      else
+        cout << hex << setfill('0') << setw(2) << (int)ptr2[j] << ' ';
+    }
 
-      cout << endl;
+    cout << '|';
+    for (int j = 0; j < 8; j++) {
+      unsigned long _addr = addr + 16 * i + j;
+      if (_addr < text_offset || _addr >= text_offset + text_size) {
+        cout << ' ';
+        continue;
+      }
+      if (isprint(ptr1[j]))
+        cout << ptr1[j];
+      else
+        cout << '.';
+    }
+    for (int j = 0; j < 8; j++) {
+      unsigned long _addr = addr + 16 * i + 8 + j;
+      if (_addr < text_offset || _addr >= text_offset + text_size) {
+        cout << ' ';
+        continue;
+      }
+      if (isprint(ptr2[j]))
+        cout << ptr2[j];
+      else
+        cout << '.';
+    }
+    cout << '|';
+
+    cout << endl;
   }
-
 }
 
 void cmd_getreg(string input) {
@@ -231,7 +349,12 @@ void cmd_help(string input) {
   cout << "- start: start the program and stop at the first instruction"
        << endl;
 }
-// void cmd_list(string input);
+
+void cmd_list(string input) {
+  for (int i = 0; i < bp.size(); i++) {
+    cout << dec << i << ": " << hex << bp[i] << endl;
+  }
+}
 
 void cmd_load(string input) {
   if (loaded) {
@@ -256,8 +379,6 @@ void cmd_load(string input) {
   read(fd, &entry, 8);
   close(fd);
   get_text_info(&text_offset, &text_size);
-  // cout << "** text: " << hex << "0x" << text_offset << " 0x" << text_size
-  //      << endl;
   cout << "** program '" << program_name << "' loaded. entry point 0x" << hex
        << entry << endl;
   loaded = 1;
@@ -318,7 +439,17 @@ void cmd_setreg(string input) {
   ss >> val;
   ptrace(PTRACE_POKEUSER, program_pid, reg_offset[tar_reg] * sizeof(long), val);
 }
-// void cmd_si(string input);
+
+void cmd_si(string input) {
+  unsigned long rip =
+      ptrace(PTRACE_PEEKUSER, program_pid, reg_offset["rip"] * sizeof(long), 0);
+  if (rip == last_bp)
+    remove_cc(rip);
+  ptrace(PTRACE_SINGLESTEP, program_pid, 0, 0);
+  wait_tracee();
+  if (cur_bp.count(rip))
+    add_cc(rip);
+}
 
 void cmd_start(string input) {
   running = 1;

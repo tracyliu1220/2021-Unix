@@ -1,7 +1,7 @@
 all: hw4
 
 hw4: hw4.o commands.o commands.h
-	g++ -o hw4 hw4.o commands.o commands.h
+	g++ -o hw4 hw4.o commands.o commands.h -lcapstone
 
 hw4.o: hw4.cpp commands.h
 	g++ -c hw4.cpp
