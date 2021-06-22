@@ -39,15 +39,20 @@ void add_cc(unsigned long addr) {
   unsigned long ori = ori_code[addr];
   unsigned char *ptr = (unsigned char *)&ori;
   ptr[0] = 0xcc;
-  // unsigned long cc = ori & 0xFFFFFFFFFFFFFFull | 0xCC00000000000000ull;
   ptrace(PTRACE_POKETEXT, program_pid, addr, ori);
 }
 
 void remove_cc(unsigned long addr) {
-  ptrace(PTRACE_POKETEXT, program_pid, addr, ori_code[addr]);
+  unsigned long withcc = ptrace(PTRACE_PEEKTEXT, program_pid, addr, 0);
+  unsigned char* ptr_cc = (unsigned char*)&withcc;
+  unsigned long ori = ori_code[addr];
+  unsigned char* ptr_ori = (unsigned char*)&ori;
+  ptr_cc[0] = ptr_ori[0];
+
+  ptrace(PTRACE_POKETEXT, program_pid, addr, withcc);
 }
 
-void disasm(unsigned long addr, int max_line) {
+void disasm(unsigned long addr, int max_line, int printbytes) {
   csh cshandle = 0;
   cs_open(CS_ARCH_X86, CS_MODE_64, &cshandle);
 
@@ -76,13 +81,15 @@ void disasm(unsigned long addr, int max_line) {
       in.opnd = insn[i].op_str;
       memcpy(in.bytes, insn[i].bytes, insn[i].size);
 
-      cout << hex << insn[i].address << ": ";
+      cout << '\t' << hex << insn[i].address << ": ";
 
-      for (int j = 0; j < 16; j++) {
-        if (j < in.size)
-          cout << hex << setfill('0') << setw(2) << (int)in.bytes[j] << ' ';
-        else
-          cout << "   ";
+      if (printbytes) {
+        for (int j = 0; j < 8; j++) {
+          if (j < in.size)
+            cout << hex << setfill('0') << setw(2) << (int)in.bytes[j] << ' ';
+          else
+            cout << "   ";
+        }
       }
       cout << in.opr << ' ' << in.opnd << endl;
     }
@@ -95,12 +102,14 @@ void wait_tracee() {
   int status;
   waitpid(program_pid, &status, 0);
   if (WIFEXITED(status)) {
-    cout << "** child process " << dec << program_pid << " terminiated (code "
-         << WEXITSTATUS(status) << ")" << endl;
+    cout << "** child process " << dec << program_pid
+         << " terminiated normally (code " << WEXITSTATUS(status) << ")"
+         << endl;
     running = 0;
     bp.clear();
     cur_bp.clear();
     last_bp = -1;
+    program_pid = -1;
     return;
   }
 
@@ -118,7 +127,7 @@ void wait_tracee() {
     for (int i = 0; i < bp.size(); i++)
       if (bp[i] != -1)
         remove_cc(bp[i]);
-    disasm(rip, 1);
+    disasm(rip, 1, 1);
 
     // add all cc
     for (int i = 0; i < bp.size(); i++)
@@ -179,7 +188,7 @@ void get_text_info(unsigned long *offset, unsigned long *size) {
 
 void cmd_break(string input) {
   if (!running) {
-    cout << "** program " << program_name << " is not running." << endl;
+    cout << "** The program is not being run." << endl;
     return;
   }
   stringstream ss;
@@ -204,12 +213,13 @@ void cmd_break(string input) {
 
 void cmd_cont(string input) {
   if (!running) {
-    cout << "** program " << program_name << " is not running." << endl;
+    cout << "** The program is not being run." << endl;
     return;
   }
 
   unsigned long rip =
       ptrace(PTRACE_PEEKUSER, program_pid, reg_offset["rip"] * sizeof(long), 0);
+  // cout << "=> rip: " << hex << rip << " last_bp: " << last_bp << endl;
   if (rip == last_bp)
     remove_cc(rip);
   ptrace(PTRACE_CONT, program_pid, 0, 0);
@@ -219,24 +229,40 @@ void cmd_cont(string input) {
 }
 
 void cmd_delete(string input) {
+  if (!running) {
+    cout << "** The program is not being run." << endl;
+    return;
+  }
   stringstream ss;
   ss << input;
   string cmd;
   ss >> cmd;
   int idx;
-  ss >> idx;
+  if (!(ss >> idx)) {
+    cout << "** Argument is missed." << endl;
+  }
 
-  if (idx > bp.size())
+  if (idx < 0 || idx >= bp.size()) {
+    cout << "** Index out of range." << endl;
     return;
-  if (bp[idx] == -1)
+  }
+  if (bp[idx] == -1) {
+    cout << "** Index out of range." << endl;
     return;
+  }
 
   cur_bp.erase(bp[idx]);
   remove_cc(bp[idx]);
   bp[idx] = -1;
+
+  cout << "** breakpoint " << dec << idx << " deleted." << endl;
 }
 
 void cmd_disasm(string input) {
+  if (!running) {
+    cout << "** The program is not being run." << endl;
+    return;
+  }
   stringstream ss;
   ss << input;
   string cmd;
@@ -246,49 +272,23 @@ void cmd_disasm(string input) {
     cout << "** no addr is given." << endl;
     return;
   }
+  // remove all cc
+  for (int i = 0; i < bp.size(); i++)
+    if (bp[i] != -1)
+      remove_cc(bp[i]);
+  disasm(addr, 10, 1);
 
-  disasm(addr, 10);
-
-  /*
-  csh cshandle = 0;
-  cs_open(CS_ARCH_X86, CS_MODE_64, &cshandle);
-
-  cs_insn *insn;
-  unsigned long buf[32];
-  int bufsz = 32;
-
-  for (int i = 0; i < bufsz; i++) {
-    buf[i] = ptrace(PTRACE_PEEKTEXT, program_pid, addr + 8 * i, 0);
-  }
-
-  int count;
-  if ((count = cs_disasm(cshandle, (uint8_t *)buf, bufsz * 8, addr, 0, &insn)) >
-  0) { for (int i = 0; i < count; i++) { if (i == 10) break; if (insn[i].address
-  < text_offset) continue; if (insn[i].address >= text_offset + text_size)
-  break;
-
-                        ins in;
-                        in.size = insn[i].size;
-                        in.opr  = insn[i].mnemonic;
-                        in.opnd = insn[i].op_str;
-                        memcpy(in.bytes, insn[i].bytes, insn[i].size);
-
-          cout << hex << insn[i].address << ": ";
-
-          for (int j = 0; j < 16; j++) {
-              if (j < in.size)
-                  cout << hex << setfill('0') << setw(2) << (int)in.bytes[j] <<
-  ' '; else cout << "   ";
-          }
-          cout << in.opr << ' ' << in.opnd << endl;
-      }
-      cs_free(insn, count);
-  }
-  cs_close(&cshandle);
-  */
+  // add all cc
+  for (int i = 0; i < bp.size(); i++)
+    if (bp[i] != -1)
+      add_cc(bp[i]);
 }
 
 void cmd_dump(string input) {
+  if (!running) {
+    cout << "** The program is not being run." << endl;
+    return;
+  }
   stringstream ss;
   ss << input;
   string cmd;
@@ -358,6 +358,10 @@ void cmd_dump(string input) {
 }
 
 void cmd_getreg(string input) {
+  if (!running) {
+    cout << "** The program is not being run." << endl;
+    return;
+  }
   stringstream ss;
   ss << input;
   string cmd, tar_reg;
@@ -370,6 +374,10 @@ void cmd_getreg(string input) {
 }
 
 void cmd_getregs(string input) {
+  if (!running) {
+    cout << "** The program is not being run." << endl;
+    return;
+  }
   struct user_regs_struct data;
   int ret = ptrace(PTRACE_GETREGS, program_pid, 0, &data);
   cout << "RAX " << hex << data.rax << "\t";
@@ -415,7 +423,9 @@ void cmd_help(string input) {
 
 void cmd_list(string input) {
   for (int i = 0; i < bp.size(); i++) {
-    cout << dec << i << ": " << hex << bp[i] << endl;
+    if ((long)bp[i] == -1)
+      continue;
+    cout << '\t' << dec << i << ": " << hex << bp[i] << endl;
   }
 }
 
@@ -448,6 +458,10 @@ void cmd_load(string input) {
 }
 
 void cmd_run(string) {
+  if (!loaded) {
+    cout << "** No executable file specified." << endl;
+    return;
+  }
   if (running) {
     cout << "** program " << program_name << " is already running." << endl;
     return;
@@ -468,19 +482,45 @@ void cmd_run(string) {
   }
 }
 void cmd_vmmap(string input) {
+  if (!running) {
+    cout << "** The program is not being run." << endl;
+    return;
+  }
   string str_pid;
   stringstream ss;
   ss << program_pid;
   ss >> str_pid;
   ifstream fin("/proc/" + str_pid + "/maps");
   string line;
+
   while (getline(fin, line)) {
     stringstream ss;
     ss << line;
     string tmp;
     ss >> tmp;
-    cout << tmp << '\t';
+    
+    string tmp1, tmp2;
+    int ptr = 0;
+    while (tmp[ptr] != '-') {
+        tmp1 += tmp[ptr];
+        ptr++;
+    }
+    for (int i = 0; i < 16 - tmp1.size(); i++)
+        cout << '0';
+    cout << tmp1;
+    cout << '-';
+    
+    ptr++;
+    while (ptr < tmp.size()) {
+        tmp2 += tmp[ptr];
+        ptr++;
+    }
+    for (int i = 0; i < 16 - tmp2.size(); i++)
+        cout << '0';
+    cout << tmp2 << '\t';
+
     ss >> tmp;
+    tmp[3] = ' ';
     cout << tmp << '\t';
     ss >> tmp;
     ss >> tmp;
@@ -493,6 +533,10 @@ void cmd_vmmap(string input) {
 }
 
 void cmd_setreg(string input) {
+  if (!running) {
+    cout << "** The program is not being run." << endl;
+    return;
+  }
   stringstream ss;
   ss << input;
   string cmd, tar_reg;
@@ -504,8 +548,13 @@ void cmd_setreg(string input) {
 }
 
 void cmd_si(string input) {
+  if (!running) {
+    cout << "** The program is not being run." << endl;
+    return;
+  }
   unsigned long rip =
       ptrace(PTRACE_PEEKUSER, program_pid, reg_offset["rip"] * sizeof(long), 0);
+  // cout << "=> rip: " << hex << rip << " last_bp: " << last_bp << endl;
   if (rip == last_bp)
     remove_cc(rip);
   ptrace(PTRACE_SINGLESTEP, program_pid, 0, 0);
@@ -515,6 +564,13 @@ void cmd_si(string input) {
 }
 
 void cmd_start(string input) {
+  if (!loaded) {
+    cout << "** No executable file specified." << endl;
+    return;
+  }
+  if (program_pid != -1) {
+    kill(program_pid, 9);
+  }
   running = 1;
   int child = fork();
   if (child == 0) {

@@ -83,10 +83,12 @@ int main(int argc, char *argv[]) {
   while (getline(fin, user_input)) {
     stringstream ss;
     ss << user_input;
-    ss >> user_cmd;
+    // cout << "=> " << user_input << endl;
     int user_cmd_id = -1;
-    if (cmd_id.count(user_cmd))
-      user_cmd_id = cmd_id[user_cmd];
+    if (ss >> user_cmd) {
+        if (cmd_id.count(user_cmd))
+            user_cmd_id = cmd_id[user_cmd];
+    }
     switch (user_cmd_id) {
     case CMD_BREAK:
       cmd_break(user_input);
@@ -143,5 +145,6 @@ int main(int argc, char *argv[]) {
         cout << "sdb> ";
         cout.flush();
     }
+    user_input = "";
   }
 }
