@@ -21,8 +21,10 @@ void init(int argc, char *argv[]) {
       break;
     }
   }
-  if (optind < argc)
+  if (optind < argc) {
     program_name = argv[optind];
+    cmd_load("load " + program_name);
+  }
   fin.open(input_source.c_str(), ios::in);
 
   cmd_id["break"] = cmd_id["b"] = CMD_BREAK;
@@ -73,11 +75,12 @@ void init(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   init(argc, argv);
   bool exit_flag = false;
-  while (1) {
+  if (input_source == "/dev/stdin") {
     cout << "sdb> ";
     cout.flush();
-    string user_input, user_cmd;
-    getline(fin, user_input);
+  }
+  string user_input, user_cmd;
+  while (getline(fin, user_input)) {
     stringstream ss;
     ss << user_input;
     ss >> user_cmd;
@@ -136,5 +139,9 @@ int main(int argc, char *argv[]) {
     }
     if (exit_flag)
       break;
+    if (input_source == "/dev/stdin") {
+        cout << "sdb> ";
+        cout.flush();
+    }
   }
 }

@@ -98,6 +98,8 @@ void wait_tracee() {
     cout << "** child process " << dec << program_pid << " terminiated (code "
          << WEXITSTATUS(status) << ")" << endl;
     running = 0;
+    bp.clear();
+    cur_bp.clear();
     last_bp = -1;
     return;
   }
@@ -122,9 +124,6 @@ void wait_tracee() {
     for (int i = 0; i < bp.size(); i++)
       if (bp[i] != -1)
         add_cc(bp[i]);
-
-    // remove rip cc
-    remove_cc(rip);
 
     return;
   }
@@ -209,18 +208,14 @@ void cmd_cont(string input) {
     return;
   }
 
-  /*
   unsigned long rip =
       ptrace(PTRACE_PEEKUSER, program_pid, reg_offset["rip"] * sizeof(long), 0);
   if (rip == last_bp)
     remove_cc(rip);
-  */
   ptrace(PTRACE_CONT, program_pid, 0, 0);
   wait_tracee();
-  /*
   if (cur_bp.count(rip))
     add_cc(rip);
-  */
 }
 
 void cmd_delete(string input) {
@@ -504,23 +499,19 @@ void cmd_setreg(string input) {
   unsigned long val;
   ss >> cmd;
   ss >> tar_reg;
-  ss >> val;
+  ss >> hex >> val;
   ptrace(PTRACE_POKEUSER, program_pid, reg_offset[tar_reg] * sizeof(long), val);
 }
 
 void cmd_si(string input) {
-  /*
   unsigned long rip =
       ptrace(PTRACE_PEEKUSER, program_pid, reg_offset["rip"] * sizeof(long), 0);
   if (rip == last_bp)
     remove_cc(rip);
-  */
   ptrace(PTRACE_SINGLESTEP, program_pid, 0, 0);
   wait_tracee();
-  /*
   if (cur_bp.count(rip))
     add_cc(rip);
-    */
 }
 
 void cmd_start(string input) {
